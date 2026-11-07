@@ -1,0 +1,564 @@
+FSD – CEAS CIRCULAR CU LED-URI ADRESABILE WS2812B ȘI ESP32 Versiunea 1.0
+– Draft Document de specificații funcționale Limba: Română
+
+====================================================================== 1.
+SCOPUL PROIECTULUI
+======================================================================
+
+Dezvoltarea unui ceas electronic circular, realizat cu un
+microcontroller ESP32 și un inel de 60 de LED-uri adresabile (tip
+WS2812B, denumirea exactă urmând să fie confirmată).
+
+Ceasul va afișa ora prin trei indicatoare luminoase: - Ore – culoare și
+intensitate configurabile. - Minute – culoare și intensitate
+configurabile. - Secunde – culoare și intensitate configurabile, cu
+posibilitatea dezactivării.
+
+Ora va fi obținută prin NTP, prin intermediul unei conexiuni Wi-Fi.
+Dispozitivul va avea două moduri principale: 1. Client Mode – conectare
+la una dintre cele trei rețele Wi-Fi salvate. 2. Access Point Mode – mod
+de configurare, activat dacă nu se poate realiza conectarea la niciuna
+dintre rețelele configurate.
+
+Interfața web va permite administrarea rețelelor Wi-Fi, a orei, a
+sincronizării și a personalizării cromatice.
+
+======================================================================
+2. SPECIFICAȚII HARDWARE
+======================================================================
+
+Microcontroller: ESP32-S3 SuperMini (Xtensa dual-core LX7 240MHz, 4MB Flash)
+Display: Inel circular cu 60 LED-uri adresabile
+Tip LED: WS2812B (5050 NeoPixel)
+LED de referință: index 0, poziția 12:00
+Direcție de numerotare: Sens orar (clockwise)
+Pin DATA: GPIO 4 (recomandat și sigur pe latura plăcuței SuperMini; pe ESP32-S3 pinul GPIO26 este conectat intern la memoria Flash/PSRAM și nu poate fi folosit)
+Bibliotecă LED: FastLED (suport nativ RMT pe ESP32-S3)
+Interfață Serială: USB CDC nativ prin mufa USB-C (opțiune Arduino IDE: USB CDC On Boot: Enabled)
+Alimentare LED: sursă externă dimensionată corespunzător, cu masă comună (GND) cu ESP32. Se recomandă rezistență serie pe linia DATA (330-470 ohm) și condensator de filtrare (1000 uF) pe alimentare.
+
+======================================================================
+3. MODURI DE FUNCȚIONARE ȘI FLUX DE PORNIRE
+======================================================================
+
+3.1. Secvența de boot
+
+La pornire, dispozitivul va: 1. Inițializa hardware-ul și configurația
+persistentă. 2. Porni o animație de boot. 3. Inițializa subsistemul
+Wi-Fi. 4. Încerca pe rând conectarea la cele trei profiluri Wi-Fi
+active, în ordinea priorității. 5. Dacă o conexiune reușește: - obține
+adresa IP prin DHCP; - pornește serviciul web în modul Client; - execută
+animația de conectare reușită; - încearcă sincronizarea NTP; - începe
+afișarea orei. 6. Dacă toate profilurile eșuează: - pornește Access
+Point; - pornește serverul web de configurare; - afișează starea de
+configurare/eroare.
+
+3.2. Client Mode
+
+În Client Mode: - ESP32 se conectează la una dintre cele trei rețele
+configurate. - Adresa IP este obținută prin DHCP. - Ora este
+sincronizată prin NTP. - Interfața web este disponibilă la IP-ul
+primit. - Dispozitivul nu creează un AP permanent în funcționarea
+normală.
+
+3.3. Access Point Mode
+
+Dacă niciuna dintre rețelele configurate nu este disponibilă sau
+autentificarea eșuează, ESP32 pornește propriul Access Point.
+
+Parametri impliciți stabiliți:
+- SSID: Clock
+- Parolă: Fără parolă (Open AP)
+- IP: 192.168.4.1
+- DHCP: activ
+- Server web: activ
+- Autentificare interfață web: Dezactivată (fără parolă, rețea privată securizată)
+
+Interfața se accesează la: http://clock.local sau direct prin IP (ex: http://192.168.4.1 în mod AP).
+
+După salvarea profilurilor Wi-Fi, dispozitivul va încerca conectarea la
+rețelele configurate. Dacă reușește, va trece în Client Mode.
+
+3.4. Pierderea conexiunii Wi-Fi
+
+Dacă Wi-Fi se pierde în timpul funcționării: - ceasul continuă să
+afișeze ora folosind timpul local disponibil; - se încearcă periodic
+reconectarea; - animațiile și serverul de afișare nu trebuie blocate; -
+trecerea în AP Mode după eșecul reconectării va fi configurabilă.
+
+Comportamentul recomandat este AP fallback cu încercări periodice de
+reconectare și revenire automată în Client Mode.
+
+======================================================================
+4. LOGICA DE AFIȘARE A OREI
+======================================================================
+
+4.1. Cadranul cu 60 de LED-uri
+
+Fiecare LED reprezintă o poziție de minut: - LED 0 = 12:00 - LED 15 =
+03:00 - LED 30 = 06:00 - LED 45 = 09:00
+
+Direcția de creștere a indexului trebuie confirmată în funcție de
+orientarea fizică a inelului.
+
+4.2. Indicatorul orelor
+
+Poziția orei se calculează progresiv, ținând cont de minute: poziția pe
+cadran = (ora modulo 12 + minute / 60) × 5
+
+Exemple: - 12:00 – LED 0 - 01:00 – LED 5 - 01:30 – poziția 5,5 - 03:00 –
+LED 15 - 06:00 – LED 30 - 09:00 – LED 45
+
+Se recomandă interpolarea luminozității între LED-urile adiacente pentru
+reprezentarea pozițiilor fracționare.
+
+4.3. Indicatorul minutelor
+
+Poziția minutelor este egală cu minutul curent: poziție = minut
+
+Exemple: - minutul 00 – LED 0 - minutul 15 – LED 15 - minutul 30 – LED
+30 - minutul 45 – LED 45
+
+4.4. Indicatorul secundelor
+
+Poziția secundelor este egală cu secunda curentă: poziție = secundă
+
+Indicatorul secundelor poate fi activat sau dezactivat din interfață.
+Moduri propuse: - discret: schimbare o dată pe secundă; - fluid:
+interpolare între LED-uri; - pulsare: efect opțional de intensitate.
+
+4.5. Suprapunerea indicatoarelor
+
+Doi sau trei indicatori pot ocupa aceeași poziție. Sistemul permite
+selectarea modului de combinare (în subpagina Look&Feel):
+- Amestec RGB aditiv, cu limitarea valorilor la 255;
+- Prioritate configurabilă (de la prioritar la mascat):
+  * Ora > Minute > Secunde (Ora pe deasupra, Minut intermediar, Secunda mascată)
+  * Ora > Secunde > Minute (Ora pe deasupra, Secundar intermediar, Minut mascat)
+  * Minute > Secunde > Ore (Minutul pe deasupra, Ora mascată)
+  * Secunde > Minute > Ore (Secundarul pe deasupra, Ora mascată)
+
+Intensitatea individuală și globală trebuie aplicată în calculul culorii
+finale. Comportamentul trebuie să fie determinist și testabil.
+
+4.6. Variantă de afișare cu 3 LED-uri (Centru + LED-uri de gardă)
+
+Pentru indicatoarele de Ore și Minute este disponibil modul de afișare lărgit cu 3 LED-uri:
+- LED-ul din mijloc reprezintă indicatorul principal, cu intensitate mai mare și culoare proprie;
+- Două LED-uri de flanc/gardă (stânga și dreapta) cu intensitate mai redusă și culoare configurabilă independent;
+- Blocul de 3 LED-uri păstrează posibilitatea de deplasare atât în salt discret, cât și fluid continuu (interpolat);
+- În regim de tranziție fluidă pe 3 LED-uri, se garantează afișarea strictă în permanență a exact 3 LED-uri aprinse:
+  * LED-ul din urmă scade în luminozitate pe măsură ce poziția avansează;
+  * Când atinge un prag minim configurabil (Cutoff, implicit 5% din absolut), LED-ul din urmă se stinge ferm, iar următorul LED din față se aprinde ferm direct la nivelul pragului;
+  * Accentul maxim de intensitate și culoarea de centru glisează continuu către noul LED central.
+
+======================================================================
+5. SINCRONIZAREA OREI PRIN NTP
+======================================================================
+
+5.1. Servere NTP implicite
+
+-   pool.ntp.org
+-   time.google.com
+-   time.cloudflare.com
+
+Serverele vor putea fi modificate din interfața web.
+
+5.2. Momentele sincronizării
+
+Sincronizarea se efectuează:
+- la boot, după conectarea Wi-Fi;
+- la fiecare 12 ore: la ora 03:00 AM și 15:00 PM (03:00 PM);
+- la cerere (manual din interfața web).
+
+Sincronizările manuale și cele programate sunt coordonate pentru a
+evita cereri redundante.
+
+5.3. Corecția graduală (slew)
+
+La primirea unei referințe NTP: 1. Se calculează diferența dintre timpul
+local și timpul NTP. 2. Corecția se distribuie gradual pe durata
+implicită de 60 de secunde. 3. Afișarea ceasului continuă pe toată
+durata corecției. 4. Nu se efectuează un salt vizibil al indicatoarelor,
+dacă diferența poate fi corectată gradual.
+
+Trebuie tratate atât diferențele pozitive, cât și cele negative. Se
+recomandă utilizarea unui mecanism de ajustare graduală precum
+adjtime(), dacă este compatibil cu arhitectura aleasă, sau o
+implementare software bazată pe un ceas monoton.
+
+Dacă diferența este foarte mare, trebuie definită o politică explicită:
+corecție graduală prelungită, acceptarea unei corecții accelerate sau
+semnalarea unei stări de eroare. Această politică va fi stabilită
+înaintea implementării.
+
+5.4. Fus orar (Human-Readable)
+
+Fusul orar este setat în mod direct și ușor de citit (human-readable):
+- Diferență în ore față de UTC: de la -12 la +14 (implicit +2 pentru România);
+- Diferență în minute: 0, 15, 30, 45 (implicit 0);
+- Opțiune activare oră de vară (DST): bifă pentru aplicare automată/manuală +1 oră.
+
+5.5. Lipsa sincronizării
+
+Dacă NTP nu este disponibil: - ceasul continuă cu ultima oră validă; -
+se afișează opțional o indicație vizuală de nesincronizare; - se fac
+încercări ulterioare; - dacă nu există nicio oră validă, se afișează o
+animație de așteptare sau o stare distinctă.
+
+Ultima oră validă poate fi stocată în NVS, însă aceasta nu garantează
+păstrarea orei exacte după o întrerupere de alimentare. Pentru păstrarea
+timpului în lipsa alimentării este recomandat un RTC extern cu baterie.
+
+======================================================================
+6. ANIMAȚII LUMINOASE
+======================================================================
+
+6.1. Animație de boot (Consum redus)
+La pornire, inelul execută un joc de lumini cu maximum 4 steluțe scânteietoare în poziții complet aleatorii, cu culori diferite și luminozitate redusă (~15-25%), având fade-in și fade-out lin. Acest efect previne căderile de tensiune (brownout) pe alimentarea USB/5V prin menținerea consumului la sub 30-40 mA.
+De asemenea, sistemul include limitator automat de putere (Surge Protection), configurabil și activabil/dezactivabil direct din `setup.h` (`ENABLE_SURGE_PROTECTION`, limită implicită 350 mA).
+
+6.2. Animație de conectare reușită
+După conectarea Wi-Fi și obținerea orei NTP, se execută un joc de lumini discret cu 4 steluțe în nuanțe de smarald/verde/cyan apărând în poziții aleatorii pe inel, confirmând intrarea în modul normal fără a solicita brusc sursa de alimentare.
+
+6.3. Animație de eroare În cazul lipsei conexiunii sau al unei erori de
+sincronizare se poate executa o animație distinctă, fără blocarea
+pornirii AP-ului.
+
+Toate animațiile trebuie să fie neblocante. Nu se vor utiliza întârzieri
+lungi de tip delay() care să împiedice gestionarea Wi-Fi, a serverului
+web sau a timpului.
+
+Durata, culorile, viteza și activarea animațiilor vor fi configurabile
+în măsura în care resursele firmware permit.
+
+======================================================================
+7. INTERFAȚA WEB DE ADMINISTRARE
+======================================================================
+
+Interfața va fi responsive și optimizată pentru telefon, tabletă și
+desktop. Secțiunile principale:
+
+-   Dashboard
+-   Wi-Fi
+-   Ceas și sincronizare
+-   Personalizare LED
+-   Animații
+-   Sistem
+
+7.1. Dashboard
+
+Va afișa: - ora curentă; - starea Wi-Fi; - modul de funcționare: Client
+sau AP; - SSID conectat; - adresa IP; - starea sincronizării NTP; - data
+și ora ultimei sincronizări; - data și ora următoarei sincronizări; -
+starea LED-urilor.
+
+Acțiuni rapide: - repornire dispozitiv; - sincronizare NTP manuală; -
+test LED-uri; - acces la configurări.
+
+7.2. Configurare Wi-Fi
+
+Vor exista trei profiluri independente. Pentru fiecare profil: -
+activare/dezactivare; - SSID; - parolă; - prioritate; - testare
+conexiune; - salvare și ștergere.
+
+Cerințe: - profilurile se salvează persistent în NVS; - conectarea se
+încearcă în ordinea priorității; - dacă un profil eșuează, se încearcă
+următorul; - parolele nu se afișează în clar după salvare; -
+utilizatorul poate testa o rețea înainte de salvare.
+
+7.3. Configurare ceas și NTP
+
+Parametri: - server NTP 1, 2 și 3; - fus orar human-readable (offset ore/minute +/- față de UTC și opțiune oră de vară DST); - sincronizare la boot
+ON/OFF; - sincronizare periodică ON/OFF; - interval sincronizare,
+implicit 6 ore; - sincronizare la 03:00 ON/OFF; - sincronizare la 09:00
+ON/OFF; - sincronizare la 15:00 ON/OFF; - sincronizare la 21:00
+ON/OFF; - durată slew, implicit 60 secunde; - sincronizare manuală.
+
+Intervalul periodic și orele fixe trebuie coordonate pentru a preveni
+sincronizările duplicate.
+
+7.4. Personalizare cromatică
+
+Pentru fiecare indicator (ore, minute, secunde) se vor configura: -
+activare/dezactivare; - culoare prin color picker; - introducere cod
+HEX/RGB; - intensitate individuală 0–100%; - efect de pulsare; -
+intensitatea pulsării; - tranziție graduală; - lungimea indicatorului; -
+efect de trail și numărul de LED-uri din urmă.
+
+Parametri globali: - luminozitate generală 0–100%; - culoare de fundal
+pentru LED-urile neutilizate; - activare/dezactivare LED-uri de
+fundal; - luminozitate nocturnă; - activare mod nocturn; - interval orar
+pentru modul nocturn; - efect de fading; - viteza tranzițiilor.
+
+Culori și luminozități implicite stabilite:
+- ore: Alb (#FFFFFF), luminozitate 30% (opțiune 3 LED-uri cu flancuri gri la 15%);
+- minute: Roșu (#FF0000), luminozitate 20% (opțiune 3 LED-uri cu flancuri roșu atenuat la 10%);
+- secunde: Albastru (#0000FF), luminozitate 10%.
+
+7.5. Setări avansate de afișare și tranziție
+
+Parametri configurabili:
+- Tranzitie fluida independenta per indicator:
+  - Indicator Ore: fluid (interpolat) sau discret;
+  - Indicator Minute: fluid (interpolat) sau discret;
+  - Indicator Secunde: fluid (continuu) sau discret (salt o data pe secunda).
+- Sectiunea Comportament Cadran este grupata in subpagina Look&Feel si include:
+  - Afișare secunde ON/OFF;
+  - Mod suprapunere culori (RGB aditiv sau Prioritate: Ora>Min>Sec, Ora>Sec>Min, Min>Sec>Ora, Sec>Min>Ora);
+  - Prag minim de stingere garda la tranzitie fluida 3 LED-uri (Cutoff %, implicit 5%);
+  - Offset cadran (-30 .. +30 LED-uri);
+  - Orientare: sens orar/antiorar.
+- Retur automat dupa salvare: fiecare salvare din interfata web redirecteaza utilizatorul inapoi exact in subpagina de provenienta.
+
+7.6. Mod Lampa (Iluminat Ambiental)
+
+Sistemul include o subpagina dedicata (`/lamp`) care permite transformarea ceasului intr-o lampa ambientala sau lumina de veghe:
+- Comutare instanta Mod Ceas / Mod Lampa;
+- Efecte disponibile:
+  1. Culoare statica personalizata (color picker);
+  2. Lumina Calda (Warm White ~2700K);
+  3. Lumina Rece (Cold White ~6000K);
+  4. Curcubeu fluid rotativ (Rainbow Flow);
+  5. Pulsare curcubeu (Rainbow Breathe);
+  6. Efect lumanare realista (Candle Flicker);
+- Reglaj fin de luminozitate dedicat pentru lampa (1 - 100%);
+- Reglaj viteza pentru efectele dinamice (1 - 100);
+- Presetari rapide: Lumina calda, Lumanare, Rainbow Party, Roz Ambient.
+
+7.6. Presetări cromatice
+
+Presetări propuse: - Classic – ore roșii, minute verzi, secunde
+albastre; - Ice – nuanțe de albastru și cyan; - Sunset – portocaliu,
+roșu și galben; - Neon – culori saturate; - Minimal – aceeași culoare
+pentru toate indicatoarele; - Rainbow – culori dinamice; - Custom –
+configurație definită de utilizator.
+
+Utilizatorul va putea salva și reutiliza presetări personalizate, în
+limitele spațiului disponibil în NVS.
+
+7.7. Previzualizare și testare
+
+Pagina de personalizare va include o previzualizare a inelului.
+Acțiuni: - aplicare temporară; - salvare configurație; - revenire la
+configurația anterioară; - restaurare valori implicite; - test
+individual al fiecărui indicator.
+
+======================================================================
+8. ARHITECTURA SOFTWARE
+======================================================================
+
+Firmware-ul va fi organizat în module independente.
+
+Module recomandate: - main: inițializare și coordonare; - LedController:
+controlul celor 60 de LED-uri; - ClockEngine: calculul pozițiilor
+indicatoarelor; - TimeManager: timpul local și corecția graduală; -
+NtpManager: sincronizarea NTP; - WiFiManager: gestionarea celor trei
+rețele; - AccessPointManager: pornirea și configurarea AP; - WebServer:
+interfața de administrare; - ConfigManager: citirea și salvarea
+configurațiilor; - AnimationManager: efectele luminoase; - Scheduler:
+evenimente periodice și sincronizări.
+
+Tehnologii și Biblioteci necesare:
+- Platformă: ESP32-S3 (ESP32-S3 SuperMini)
+- Framework: Arduino Core for ESP32 (recomandat v2.0.x sau v3.x)
+- Setări Arduino IDE: Board: "ESP32S3 Dev Module", USB CDC On Boot: "Enabled", Partition Scheme: "Huge APP"
+
+Biblioteci externe necesare (se instalează din Arduino IDE -> Library Manager):
+1. **FastLED**
+   - Autor: Daniel Garcia
+   - Căutare în Library Manager: `FastLED`
+   - Versiune recomandată: 3.6.0 sau mai nouă (cu suport ESP32-S3 RMT)
+   - Rol: Controlul inelului de 60 LED-uri WS2812B pe pinul GPIO 4
+
+Biblioteci standard (incluse nativ în ESP32 Arduino Core, NU necesită instalare):
+2. **WiFi.h** - Gestiune mod Station (3 rețele) și SoftAP ("Clock")
+3. **WebServer.h** - Server HTTP local pentru portalul de administrare responsive
+4. **Preferences.h** - Acces la memoria non-volatilă NVS pentru salvarea setărilor și credențialelor
+5. **time.h** & **esp_sntp.h** - Sincronizare automată NTP, fus orar și gestiune ceas de sistem POSIX
+6. **ESPmDNS.h** - Rezoluție nume gazda local (mDNS) pentru acces direct la `http://clock.local`
+
+8.1. Principii de proiectare
+
+-   Motorul de afișare nu trebuie să depindă de Wi-Fi, NTP sau serverul
+    web.
+-   Animațiile și serverul web trebuie să funcționeze neblocant.
+-   Configurația trebuie separată de logica de afișare.
+-   Modificările de configurație trebuie validate înainte de salvare.
+-   Trebuie evitate scrierile excesive în memoria flash.
+-   Firmware-ul trebuie să gestioneze explicit erorile și reconectările.
+
+8.2. Structura configurației persistente
+
+Configurația va fi păstrată în NVS. Structura logică va include:
+
+Wi-Fi: - trei profiluri cu SSID, parolă, activare și prioritate.
+
+Ceas: - fus orar; - servere NTP; - activare sincronizare la boot; -
+interval și ore programate; - durată slew.
+
+Afișare: - luminozitate globală; - activarea secundelor; - culori pentru
+ore, minute și secunde; - luminozitate individuală; - efecte și
+tranziții; - offset și orientare; - modul de suprapunere.
+
+Animații: - activare; - tip; - culori; - durată și viteză.
+
+Sistem: - SSID și parolă AP; - autentificare web; - alte opțiuni de
+administrare.
+
+======================================================================
+9. CERINȚE DE PERFORMANȚĂ ȘI FIABILITATE
+======================================================================
+
+1.  Afișarea orei nu trebuie întreruptă de activitatea serverului web.
+2.  Animațiile trebuie să fie neblocante.
+3.  Modificările de configurație trebuie salvate persistent.
+4.  Restartul nu trebuie să piardă setările.
+5.  O eroare NTP nu trebuie să blocheze ceasul.
+6.  Pierderea Wi-Fi nu trebuie să oprească afișarea.
+7.  Serverul web trebuie să rămână accesibil în AP Mode.
+8.  Luminozitatea trebuie limitată pentru protejarea sursei și
+    LED-urilor.
+9.  Suprapunerile indicatoarelor trebuie tratate corect.
+10. Configurațiile invalide trebuie respinse.
+11. Salvarea configurației trebuie protejată împotriva întreruperii
+    alimentării, pe cât posibil.
+12. Firmware-ul trebuie să recupereze automat după erori de conectare.
+
+======================================================================
+10. SECURITATE
+======================================================================
+
+-   SSID AP: "Clock".
+-   Parola AP: Fără parolă (Open AP).
+-   Parolele Wi-Fi nu vor fi expuse în clar în interfață.
+-   Accesul la interfața web de configurare: Fără parolă (rețea locală securizată).
+-   Credențialele și setările sunt salvate non-volatil în memoria NVS (Preferences).
+-   Configurațiile vor fi validate înainte de salvare.
+-   Endpoint-urile de configurare nu vor accepta date arbitrare.
+-   Acțiunile sensibile, precum resetarea configurației și restartul,
+    vor necesita confirmare.
+-   În Client Mode, administrarea va fi disponibilă în rețeaua locală,
+    în limitele regulilor routerului și ale rețelei.
+
+======================================================================
+11. CRITERII DE ACCEPTANȚĂ
+======================================================================
+
+AC01 – Pornire ESP32: Se execută animația de boot.
+
+AC02 – Profil Wi-Fi 1 disponibil: Dispozitivul se conectează la profilul
+1.
+
+AC03 – Profilul 1 indisponibil: Dispozitivul încearcă profilul 2.
+
+AC04 – Primele două profiluri indisponibile: Dispozitivul încearcă
+profilul 3.
+
+AC05 – Toate rețelele indisponibile: Dispozitivul pornește AP.
+
+AC06 – Configurare Wi-Fi prin AP: Profilurile se salvează persistent.
+
+AC07 – Conectare Wi-Fi: Se execută animația de conectare reușită.
+
+AC08 – Sincronizare NTP: Ora locală corespunde referinței NTP, ținând
+cont de fusul orar.
+
+AC09 – Corecție oră: Corecția este distribuită pe durata configurată,
+implicit 60 secunde.
+
+AC10 – Trecere peste ora 12: Poziția indicatorului de oră este corectă.
+
+AC11 – Modificare culoare: Culoarea selectată este aplicată
+indicatorului corespunzător.
+
+AC12 – Dezactivare secunde: Indicatorul secundelor nu mai este afișat.
+
+AC13 – Suprapunere indicatoare: Este aplicată regula de combinare
+selectată.
+
+AC14 – Restart: Configurația persistentă este păstrată.
+
+AC15 – Pierdere Wi-Fi: Ceasul continuă să funcționeze cu timpul
+disponibil.
+
+AC16 – Modificare luminozitate: Intensitatea LED-urilor este
+actualizată.
+
+AC17 – Mod nocturn: Luminozitatea se reduce în intervalul configurat.
+
+AC18 – Modificare fus orar: Ora locală se actualizează corect.
+
+AC19 – NTP indisponibil: Ceasul nu se blochează și încearcă ulterior
+sincronizarea.
+
+AC20 – Interfață web: Pagini și acțiuni funcționale pe telefon și
+desktop.
+
+======================================================================
+12. FUNCȚIONALITĂȚI ÎN AFARA PRIMEI VERSIUNI
+======================================================================
+
+Nu sunt obligatorii pentru prima versiune, dar arhitectura poate permite
+adăugarea ulterioară a: - alarmă configurabilă; - cronometru; -
+temporizator; - afișare temperatură și umiditate; - integrare Home
+Assistant; - OTA – actualizare firmware prin Wi-Fi; - teme grafice
+suplimentare; - backup și restaurare configurație; - RTC extern pentru
+păstrarea orei fără alimentare.
+
+======================================================================
+13. DECIZII CONFIRMATE PENTRU IMPLEMENTARE
+======================================================================
+
+1.  Microcontroller & Pin DATA:
+    ESP32-S3 SuperMini (Xtensa dual-core LX7 240MHz, 4MB Flash). Pinul DATA pentru WS2812B este GPIO 4.
+    (Pe ESP32-S3, pinul GPIO 26 este conectat intern la memoria Flash/PSRAM; pinul GPIO 4 este un pin exterior sigur, curat și fără conflicte de strapping).
+
+2.  Direcția de numerotare:
+    Sens orar (clockwise), începând cu LED 0 la poziția orei 12:00.
+
+3.  Programul de sincronizare NTP:
+    La 12 ore: la orele 03:00 AM și 15:00 PM (03:00 PM), plus la pornire și la cerere manuală.
+
+4.  Reprezentarea indicatoarelor (mișcare):
+    Configurabilă: mod discret (pe câte un singur LED) sau fluid (interpolat).
+    Valoarea implicită este setată în `setup.h` și este ajustabilă dinamic din interfața web.
+
+5.  Suprapunerea culorilor:
+    Configurabila in Look&Feel: Amestec RGB aditiv sau Prioritate stratificata de la prioritar la mascat (Ora > Minute > Secunde, Minute > Secunde > Ore, Secunde > Minute > Ore).
+
+6.  Modul Access Point (AP fallback):
+    - SSID: "Clock"
+    - Parolă: Fără parolă (Open)
+    - IP: 192.168.4.1
+    - Pagina de administrare web: Fără parolă
+    - Reîncercări periodice de reconectare Wi-Fi în fundal.
+
+7.  Bibliotecă LED:
+    FastLED.
+
+8.  Stocare persistentă:
+    Preferințele și credențialele Wi-Fi sunt salvate non-volatil prin mecanismul NVS (biblioteca Preferences).
+
+======================================================================
+14. ETAPE RECOMANDATE DE IMPLEMENTARE
+======================================================================
+
+VERSIUNEA 1 – CORE - controlul LED-urilor; - calculul pozițiilor
+ceasului; - Wi-Fi cu trei profiluri; - AP fallback; - sincronizare
+NTP; - corecție graduală; - animații de boot și conectare.
+
+VERSIUNEA 2 – WEB UI - interfață web completă; - configurare Wi-Fi; -
+configurare NTP și fus orar; - personalizare cromatică; - presetări; -
+salvare persistentă.
+
+VERSIUNEA 3 – POLISH - animații avansate; - mod nocturn; - OTA; -
+tratarea completă a erorilor; - testare și optimizare.
+
+PRINCIPIU GENERAL: Motorul de afișare trebuie să fie independent de
+conectivitatea Wi-Fi, NTP și serverul web. Aceste subsisteme îi
+furnizează timpul și configurația, fără să îi întrerupă funcționarea.
+
+======================================================================
+SFÂRȘIT DOCUMENT
+======================================================================
