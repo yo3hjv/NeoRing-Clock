@@ -21,6 +21,7 @@
 - mDNS support via `http://clock.local`
 - Persistent configuration storage in NVS
 - Low-power startup animation
+- Software Limited Maximum Current (approx.320mA)
 
 ---
 
