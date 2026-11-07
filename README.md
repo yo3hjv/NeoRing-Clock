@@ -38,7 +38,7 @@ The clock automatically synchronizes with NTP servers, supports smooth sub-pixel
 
 | Component | Description |
 |------------|------------|
-| Microcontroller | ESP32-C3 SuperMini (160 MHz RISC-V, 4 MB Flash) |
+| Microcontroller | ESP32-C3 SuperMini (160 MHz RISC-V, 4 MB Flash) or Wemos D1 Mini ESP32|
 | Display | 60 x WS2812B RGB Addressable LEDs | https://www.vanallesenmeer.nl/NeoPixel-RGB-Ring-60x-WS2812-5050-Rgb-Led
 | Data Pin | GPIO4 (ESP32-C3/S3) or GPIO26 (ESP32 D1 Mini) |
 | Power Supply | 5V DC, minimum 2A |
