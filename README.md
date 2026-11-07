@@ -31,6 +31,7 @@ This project transforms a **60-LED WS2812B addressable LED ring** into a modern,
 
 The clock automatically synchronizes with NTP servers, supports smooth sub-pixel interpolation, offers multiple display styles, and includes a complete web-based configuration portal accessible from phones, tablets, and desktop computers.
 
+Compilation is done with Arduino IDE with ESP32 support.
 ---
 
 # 2. Hardware Specifications & Wiring
